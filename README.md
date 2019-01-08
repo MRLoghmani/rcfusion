@@ -10,3 +10,6 @@ Coming soon:
 * pre-trained params
 * docker container
  
+Contributors:
+* Mohammad Reza Loghmani - email: loghmani@acin.tuwien.ac.at
+* Mirco Planamente - email: mirco.planamente@iit.it
