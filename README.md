@@ -2,7 +2,7 @@
 Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D Object Recognition": https://arxiv.org/pdf/1806.01673.pdf
 
 ### Requirements:
-* Tensorflow 1.5.0
+* Tensorflow 1.10.0
 * CUDA 8.0
 * Python 2.7
 * See python requirements in requirements.txt
