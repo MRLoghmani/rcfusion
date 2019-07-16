@@ -6,7 +6,7 @@ import progressbar
 from image_data_handler_joint_multimodal import ImageDataHandler
 from resnet18_conv1x1 import ResNet
 from layer_blocks import *
-from tensorflow.contrib.data import Iterator
+from tensorflow.data import Iterator
 from utils import flat_shape
 import cPickle as pickle
 
@@ -27,18 +27,14 @@ print device_lib.list_local_devices()
 tf.set_random_seed(7)
 
 # Data-related params
-#dataset_dir_rgb = '/home/mohammad/repos/depthnet/input/rgbd-dataset/'
-#params_dir_rgb = '../params/resnet18_params_wrgbd_split3.npy'
-dataset_dir_rgb = '/mnt/4TB_HDD/dataset/washington/squared_rgbd-dataset/'
-params_dir_rgb = '../params/resnet18/wrgbd_rgb++_split1.npy'
+dataset_dir_rgb = '/mnt/datasets/wrgbd_eval_dataset/wrgbd_rgb++/'
+params_dir_rgb = '/mnt/params/models/resnet18_wrgbd/wrgbd_rgb++_split1.npy'
 
-#dataset_dir_depth = '/mnt/4TB_HDD/dataset/washington/depth_eval_surfnorm/'
-#params_dir_depth = '../params/resnet18_surfnorm_params_wrgbd_split3.npy'
-dataset_dir_depth = '/mnt/4TB_HDD/dataset/washington/surface_normal_++_padding/'
-params_dir_depth = '../params/resnet18/wrgbd_surfnorm++_split1.npy'
+dataset_dir_depth = '/mnt/datasets/wrgbd_eval_dataset/wrgbd_surfnorm++/'
+params_dir_depth = '/mnt/params/models/resnet18_wrgbd/wrgbd_surfnorm++_split1.npy'
 
-train_file = '../params/wrgbd_sync_tr_split1.txt'
-val_file = '../params/wrgbd_sync_val_split1.txt'
+train_file = '/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/sync_tr_split_1.txt'
+val_file = '/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/sync_val_split_1.txt'
 
 # Log params
 log_dir = '../log/test/'

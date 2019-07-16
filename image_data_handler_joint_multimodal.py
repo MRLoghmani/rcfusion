@@ -4,19 +4,12 @@ import tensorflow as tf
 import numpy as np
 from random import randint, choice
 
-from tensorflow.contrib.data import Dataset # Deprecated: switch to tensorflow.data
+from tensorflow.data import Dataset
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import convert_to_tensor
 
-PIXEL_MEAN = tf.constant([128.57, 131.794, 138.67], dtype=tf.float32)
-#IMG_MEAN_RGB = np.load('../params/mean.npy')
-#IMG_MEAN_RGB = np.load('../params/wrgbd_mean_rgb++.npy')
-#IMG_MEAN_RGB = np.load('/mnt/datasets/jhuit-50/jhuit50_weights/jhuit50_mean_rgb++.npy')
-IMG_MEAN_RGB = np.load('../params/ocid_mean_rgb++.npy')
-#IMG_MEAN_DEPTH = np.load('../params/mean_sn.npy')
-#IMG_MEAN_DEPTH = np.load('../params/wrgbd_mean_surfnorm++.npy')
-#IMG_MEAN_DEPTH = np.load('/mnt/datasets/jhuit-50/jhuit50_weights/jhuit50_mean_surfnorm++.npy')
-IMG_MEAN_DEPTH = np.load('../params/ocid_mean_surfnorm++.npy')
+IMG_MEAN_RGB = np.load('/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/wrgbd_mean_rgb++.npy', allow_pickle=True)
+IMG_MEAN_DEPTH = np.load('/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/wrgbd_mean_surfnorm++.npy', allow_pickle=True)
 
 class ImageDataHandler(object):
     """ Class to handle the input pipeline for image data """
@@ -55,8 +48,8 @@ class ImageDataHandler(object):
         img_paths_rgb = []
         img_paths_depth = []
         for path in img_paths:
-            img_paths_rgb.append(data_dir[0] + path)# + "rgbcrop.png")
-            img_paths_depth.append(data_dir[1] + path)# + "depthcrop.png")
+            img_paths_rgb.append(data_dir[0] + path + "crop.png")
+            img_paths_depth.append(data_dir[1] + path + "depthcrop.png")
 
         img_paths_rgb = convert_to_tensor(img_paths_rgb, dtype=dtypes.string)
         img_paths_depth = convert_to_tensor(img_paths_depth, dtype=dtypes.string)
@@ -77,7 +70,7 @@ class ImageDataHandler(object):
         # Dataset.map is the same as built-in python map but with parallelism options
         # create a new dataset by applying the function (_prepare_input) to each element of data
         # tensorflow.data -> data = data.map(self._prepare_input, num_parallel_calls=8).prefetch(100*self.batch_size)
-        data = data.map(self._prepare_input, num_threads=8, output_buffer_size=100*self.batch_size)
+        data = data.map(self._prepare_input, num_parallel_calls=8).prefetch(100*self.batch_size)
 
         if self.shuffle:
             data = data.shuffle(self.buffer_size)

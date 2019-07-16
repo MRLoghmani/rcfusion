@@ -32,8 +32,6 @@ def conv2d_fixed_padding(x, filter_size, num_filters, strides, name, add_bias=Tr
     """Strided 2-D convolution with explicit padding."""
      # The padding is consistent and is based only on `kernel_size`, not on the
      # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
-
-    print("********************************************** {}".format(tf.shape(x)))
     
     def fixed_padding():
         pad = ( filter_size[0] - 1 ) // 2

@@ -1,0 +1,2 @@
+progressbar==2.5
+Keras==2.2.4
