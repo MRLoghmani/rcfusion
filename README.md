@@ -17,8 +17,22 @@ Instructions:
 
 Download links:
 * Pre-processed RGB-D Object dataset: https://data.acin.tuwien.ac.at/index.php/s/YKZQmoRtWaAcU91
-* ResNet-18 params pre-trained on RGB-D Object dataset: https://data.acin.tuwien.ac.at/index.php/s/SopUlaRyoS4ct2Y
+* Original RGB-D Object dataset (we recommend using the link above instead to have the exact same pre-training we used in our experiments): http://rgbd-dataset.cs.washington.edu/dataset/rgbd-dataset_eval/
+* ResNet-18 pre-trained weights for initialization: https://data.acin.tuwien.ac.at/index.php/s/SopUlaRyoS4ct2Y
 
 Contributors:
 * Mohammad Reza Loghmani - email: loghmani@acin.tuwien.ac.at
 * Mirco Planamente - email: mirco.planamente@iit.it
+
+Citation:
+```
+@ARTICLE{rcfusion, 
+author={M. R. {Loghmani} and M. {Planamente} and B. {Caputo} and M. {Vincze}}, 
+journal={IEEE Robotics and Automation Letters}, 
+title={Recurrent Convolutional Fusion for RGB-D Object Recognition}, 
+year={2019}, 
+volume={4}, 
+number={3}, 
+pages={2878-2885}, 
+doi={10.1109/LRA.2019.2921506}}
+```
