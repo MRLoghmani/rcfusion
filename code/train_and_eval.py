@@ -7,7 +7,7 @@ import scipy
 from datetime import datetime
 import progressbar
 from image_data_handler_joint_multimodal import ImageDataHandler
-from resnet18_conv1x1 import ResNet
+from resnet18 import ResNet
 from layer_blocks import *
 from tensorflow.data import Iterator
 from utils import flat_shape, count_params, log_file
