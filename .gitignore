@@ -1,3 +1,4 @@
 wrgbd_code/
 log/
-*.pcy
+*.pyc
+.gitignore
