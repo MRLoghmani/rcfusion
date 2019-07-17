@@ -1,4 +1,4 @@
-## RCFusion
+# RCFusion
 Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D Object Recognition": https://arxiv.org/pdf/1806.01673.pdf
 
 ### Requirements:
@@ -13,12 +13,17 @@ Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D O
 [Skip to point (4) to run w/o docker]
 2. To execute the code within a docker container, run ```docker build -t <container_name> .```
 3. Start the container with ```docker run -it --runtime=nvidia -v <dataset_dir>:<dataset_dir> -v <params_dir>:<params_dir> <container_name> bash```
-4. Run ```python tran_and_eval.py --dataset <dataset_dir> --weights <params_dir>```
+4. Clone an external repository for data augmentation in the code folder: ```git clone https://github.com/aleju/imgaug.git```
+5. Run ```python tran_and_eval.py <dataset_dir> <params_dir>```
+
+### Disclaimers:
+* The paper should be cosidered the main reference for this work. All the details of the algorithm and the training are reported there.
+* WARNING: code has been developed w/ Tensorflow 1.5.0. We noticed some fluctuation in the results when migrating to Tensorflow 1.10.0. 
 
 ### Download:
-* Pre-processed RGB-D Object dataset: https://data.acin.tuwien.ac.at/index.php/s/YKZQmoRtWaAcU91
-* Original RGB-D Object dataset (we recommend using the link above instead to have the exact same pre-training we used in our experiments): http://rgbd-dataset.cs.washington.edu/dataset/rgbd-dataset_eval/
-* ResNet-18 pre-trained weights for initialization: https://data.acin.tuwien.ac.at/index.php/s/SopUlaRyoS4ct2Y
+* Pre-processed semantic crops of OCID dataset: https://data.acin.tuwien.ac.at/index.php/s/e46X2cCIjLXoRn7
+* Original semantic crops of OCID dataset (we recommend using the link above instead to have the exact same pre-training we used in our experiments): https://www.acin.tuwien.ac.at/vision-for-robotics/software-tools/object-clutter-indoor-dataset/
+* ResNet-18 pre-trained weights for initialization: https://data.acin.tuwien.ac.at/index.php/s/l1Uo4RoOwl8eYCE
 
 ### Contributors:
 * Mohammad Reza Loghmani - email: loghmani@acin.tuwien.ac.at
