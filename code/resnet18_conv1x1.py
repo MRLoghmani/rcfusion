@@ -58,7 +58,7 @@ class ResNet(object):
     def load_params(self, sess, params_dir, trainable=True, skip_layers=None):
         """ Load pre-trained params """
 
-        params = np.load(params_dir, allow_pickle=True).item()
+        params = np.load(params_dir).item()
 
         if trainable:
             s = 'trainable'

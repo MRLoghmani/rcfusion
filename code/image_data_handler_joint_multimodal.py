@@ -8,17 +8,16 @@ from tensorflow.data import Dataset
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import convert_to_tensor
 
-IMG_MEAN_RGB = np.load('/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/wrgbd_mean_rgb++.npy', allow_pickle=True)
-IMG_MEAN_DEPTH = np.load('/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/wrgbd_mean_surfnorm++.npy', allow_pickle=True)
-
 class ImageDataHandler(object):
     """ Class to handle the input pipeline for image data """
 
-    def __init__(self, txt_file, data_dir, img_size, batch_size, num_classes, num_channels=3, shuffle=False,
+    def __init__(self, txt_file, data_dir, params_dir, img_size, batch_size, num_classes, num_channels=3, shuffle=False,
                  random_crops = False, buffer_size=1000):
 
         self.num_classes = num_classes
         self.img_size = img_size
+        self.img_mean_rgb = np.load(params_dir + 'ocid_mean_rgb++.npy')
+        self.img_mean_depth = np.load(params_dir + 'ocid_mean_surfnorm++.npy')
         self.num_channels = num_channels
         self.batch_size = batch_size
         self.buffer_size = buffer_size
@@ -48,8 +47,8 @@ class ImageDataHandler(object):
         img_paths_rgb = []
         img_paths_depth = []
         for path in img_paths:
-            img_paths_rgb.append(data_dir[0] + path + "crop.png")
-            img_paths_depth.append(data_dir[1] + path + "depthcrop.png")
+            img_paths_rgb.append(data_dir[0] + path)# + "rgbcrop.png")
+            img_paths_depth.append(data_dir[1] + path)# + "depthcrop.png")
 
         img_paths_rgb = convert_to_tensor(img_paths_rgb, dtype=dtypes.string)
         img_paths_depth = convert_to_tensor(img_paths_depth, dtype=dtypes.string)
@@ -69,8 +68,8 @@ class ImageDataHandler(object):
         ## Dataset.map
         # Dataset.map is the same as built-in python map but with parallelism options
         # create a new dataset by applying the function (_prepare_input) to each element of data
-        # tensorflow.data -> data = data.map(self._prepare_input, num_parallel_calls=8).prefetch(100*self.batch_size)
         data = data.map(self._prepare_input, num_parallel_calls=8).prefetch(100*self.batch_size)
+        #data = data.map(self._prepare_input, num_threads=8, output_buffer_size=100*self.batch_size)
 
         if self.shuffle:
             data = data.shuffle(self.buffer_size)
@@ -98,8 +97,8 @@ class ImageDataHandler(object):
         #mean_img = tf.image.resize_images(IMG_MEAN, self.img_size)
         img_bgr_rgb = img_resized_rgb[:, :, ::-1] # RGB -> BGR
         img_bgr_depth = img_resized_depth[:, :, ::-1] # RGB -> BGR
-        img_centered_rgb = tf.subtract(tf.cast(img_bgr_rgb, dtype=tf.float32), IMG_MEAN_RGB[:, :, ::-1]) #IMG_MEAN_RGB[:, :, ::-1]
-        img_centered_depth = tf.subtract(tf.cast(img_bgr_depth, dtype=tf.float32), IMG_MEAN_DEPTH[:, :, ::-1]) #IMG_MEAN_DEPTH[:, :, ::-1]
+        img_centered_rgb = tf.subtract(tf.cast(img_bgr_rgb, dtype=tf.float32), self.img_mean_rgb[:, :, ::-1]) #IMG_MEAN_RGB[:, :, ::-1]
+        img_centered_depth = tf.subtract(tf.cast(img_bgr_depth, dtype=tf.float32), self.img_mean_depth[:, :, ::-1]) #IMG_MEAN_DEPTH[:, :, ::-1]
  
         img_resized_rgb = tf.image.resize_images(img_centered_rgb, self.img_size)
         img_resized_depth = tf.image.resize_images(img_centered_depth, self.img_size)

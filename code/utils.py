@@ -62,3 +62,31 @@ def prepare_sequence(names, features, batch_size):
     pass
 
     return x, y
+
+def count_params(trainable_variables):
+    global_w = 0
+    for var in trainable_variables:
+        shape = var.shape
+        local_w = 1
+        for i in range(len(shape)):
+            local_w *= int(shape[i])
+        global_w += local_w
+    return global_w
+
+def log_file(history_callback, params):
+
+    log_name = log_dir + 'log_'
+    for p in params:
+        log_name += ('_' + str(p))
+    with open(log_name, 'w+') as f:
+        num_entries = len(history_callback[log[0]])
+        for i in np.arange(num_entries):
+            line = log[0] + ' = ' + str(history_callback[log[0]][i]) + ' , ' + \
+                   log[1] + ' = ' + str(history_callback[log[1]][i]) + ' , ' + \
+                   log[2] + ' = ' + str(history_callback[log[2]][i]) + ' , ' + \
+                   log[3] + ' = ' + str(history_callback[log[3]][i]) + '\n'
+
+            f.write(line)
+
+    print('Log file saved.\n')
+

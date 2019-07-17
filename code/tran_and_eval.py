@@ -1,14 +1,20 @@
 import os
+import os
 import sys
 import shutil
+import random
+import scipy
 from datetime import datetime
 import progressbar
 from image_data_handler_joint_multimodal import ImageDataHandler
 from resnet18_conv1x1 import ResNet
 from layer_blocks import *
 from tensorflow.data import Iterator
-from utils import flat_shape
+from utils import flat_shape, count_params, log_file
 import cPickle as pickle
+
+from imgaug import imgaug as ia
+from imgaug import augmenters as iaa
 
 from keras.objectives import categorical_crossentropy
 from keras.optimizers import RMSprop
@@ -16,41 +22,51 @@ from keras.layers import LSTM, GRU, Dense, Dropout
 from keras.metrics import categorical_accuracy
 from keras import backend as K
 
-#os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-#os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
 from tensorflow.python.client import device_lib
 print device_lib.list_local_devices()
+
+
+
+
 
 """ Configuration setting """
 
 tf.set_random_seed(7)
 
 # Data-related params
-dataset_dir_rgb = '/mnt/datasets/wrgbd_eval_dataset/wrgbd_rgb++/'
-params_dir_rgb = '/mnt/params/models/resnet18_wrgbd/wrgbd_rgb++_split1.npy'
+if len(sys.argv) != 3:
+    print("The script requires 2 arguments: (1) the dataset root directory and (2) the parameters root directory.")
+dataset_root_dir = sys.argv[1] #'/mnt/datasets/ocid_dataset/'
+params_root_dir = sys.argv[2] #'/mnt/params/models/'
 
-dataset_dir_depth = '/mnt/datasets/wrgbd_eval_dataset/wrgbd_surfnorm++/'
-params_dir_depth = '/mnt/params/models/resnet18_wrgbd/wrgbd_surfnorm++_split1.npy'
+dataset_train_dir_rgb = dataset_root_dir + 'ARID20_crops/squared_rgb/'
+dataset_val_dir_rgb = dataset_root_dir + 'ARID10_crops/squared_rgb/'
+params_dir_rgb = params_root_dir + 'resnet18_ocid_rgb++_params.npy'
 
-train_file = '/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/sync_tr_split_1.txt'
-val_file = '/mnt/datasets/wrgbd_eval_dataset/split_files_and_labels/sync_val_split_1.txt'
+dataset_train_dir_depth = dataset_root_dir + 'ARID20_crops/surfnorm++/'
+dataset_val_dir_depth = dataset_root_dir + 'ARID10_crops/surfnorm++/'
+params_dir_depth = params_root_dir + 'resnet18_ocid_surfnorm++_params.npy'
+
+train_file = dataset_root_dir + 'split_files_and_labels/arid20_clean_sync_instances.txt'
+val_file = dataset_root_dir + 'split_files_and_labels/arid10_clean_sync_instances.txt'
 
 # Log params
-log_dir = '../log/test/'
+log_dir = '../log/'
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
 log = ["epoch", "train_loss", "val_loss", "val_acc"]
 tensorboard_log = '/tmp/tensorflow/'
 
 # Solver params
 learning_rate = [[0.0001]]
-num_epochs = 30
-batch_size = [[128]]
+num_epochs = 50
+batch_size = [[32]]
 num_neurons = [[100]]
 l2_factor = [[0.0]]
-maximum_norm = [[4],[np.inf]]
+maximum_norm = [[4]]
 dropout_rate = [[0.4]]
 
-depth_transf = [[1024]]
+depth_transf = [[256]]
 transf_block = transformation_block_v1
 
 # Checkpoint dir
@@ -58,54 +74,72 @@ checkpoint_dir = "/tmp/my_caffenet/"
 if not os.path.isdir(checkpoint_dir): os.mkdir(checkpoint_dir)
 
 # Input/Output
-num_classes = 51
+num_classes = 49
 img_size = [224, 224]
 num_channels = 3
 
-def generate_perp_loss(rgb_nodes, depth_nodes, reg_lambda):
-
-    loss = 0
-    loss_list = []
-    for rgb, depth, l in zip(rgb_nodes, depth_nodes, reg_lambda):
-        aT_b = tf.matmul(rgb, depth, transpose_a=True, transpose_b=False)
-        frob_norm = tf.norm(aT_b)
-        feature_dim = int(rgb.shape[1])
-        squared_frob = tf.square(tf.divide(frob_norm, feature_dim))
-        loss_list.append(squared_frob)
-        loss += l*squared_frob
-
-    return loss, loss_list
 
 
-def log_file(history_callback, params):
-
-    log_name = log_dir + 'log_res2'
-    for p in params:
-        log_name += ('_' + str(p))
-    with open(log_name, 'w+') as f:
-        num_entries = len(history_callback[log[0]])
-        for i in np.arange(num_entries):
-            line = log[0] + ' = ' + str(history_callback[log[0]][i]) + ' , ' + \
-                   log[1] + ' = ' + str(history_callback[log[1]][i]) + ' , ' + \
-                   log[2] + ' = ' + str(history_callback[log[2]][i]) + ' , ' + \
-                   log[3] + ' = ' + str(history_callback[log[3]][i]) + '\n'
-
-            f.write(line)
-
-    print('Log file saved.\n')
-
-def count_params(trainable_variables):
-    global_w = 0
-    for var in trainable_variables:
-        shape = var.shape
-        local_w = 1
-        for i in range(len(shape)):
-            local_w *= int(shape[i])
-        global_w += local_w
-    return global_w
 
 
-# Create a all combination of hyper-parameters
+""" Online data augmentation """
+
+def random_choice(start, end , _multiply ):
+    start = start * _multiply
+    end = end * _multiply
+    num = random.randrange(start,end + 1 ,1)
+    #print ("il num e'",num/_multiply)
+    return float( num / _multiply)
+def x_y_random_image(image):
+    width = image.shape[1] 
+    hight = image.shape[0]
+
+    border_x = int( ( 256 * 5 ) / 100.0)
+    border_y = int( ( 256 * 9 ) / 100.0)
+
+    pos_x = random.randrange(0 + border_x , width - border_x , 1)
+    pos_y = random.randrange(0 + border_y, hight - border_y , 1)
+    #print ("la pos e' ", pos_x , pos_y)
+    return pos_x , pos_y
+
+def data_aug(batch , batch_depth):
+    num_img = batch.shape[0]
+    list = []
+    list_depth = []
+    for i in range(num_img):
+        val_fliplr = random.randrange(0,2,1) #in questo modo il due non e compreso e restituisce i valori 0 o 1 
+        list.extend([iaa.Fliplr( val_fliplr )])
+        list_depth.extend([iaa.Fliplr( val_fliplr )])
+        
+        val_fliplr = random.randrange(0,2,1) #in questo modo il due non e compreso e restituisce i valori 0 o 1 
+        list.extend([iaa.Flipud( val_fliplr )])
+        list_depth.extend([iaa.Flipud( val_fliplr )])
+        
+        val_scala = random.randrange(5 , 11 , 1)
+        val = float (val_scala / 10.0) 
+        list.extend([iaa.Affine( val , mode = 'edge')])
+        list.extend([iaa.Affine( 10.0 / val_scala , mode = 'edge')])
+        list_depth.extend([iaa.Affine( val , mode = 'edge')])
+        list_depth.extend([iaa.Affine( 10.0 / val_scala , mode = 'edge')])
+        
+        val_rotation = random.randrange( -180, 181 , 90)
+        list.extend( [ iaa.Affine( rotate = val_rotation ,mode = 'edge') ] )
+        list_depth.extend( [ iaa.Affine( rotate = val_rotation ,mode = 'edge') ] )
+        
+        augseq = iaa.Sequential(list)
+        batch[i] = augseq.augment_image( batch[i] )
+        augseq_depth = iaa.Sequential(list)
+        batch_depth[i] = augseq_depth.augment_image( batch_depth[i])
+        
+        list=[]
+        list_depth = []
+
+
+
+
+
+""" Loop for gridsearch of hyper-parameters """
+
 set_params = [lr+nn+bs+aa+mn+do+dt for lr in learning_rate for nn in num_neurons for bs in batch_size for aa in l2_factor for mn in maximum_norm for do in dropout_rate for dt in depth_transf]
 
 for hp in set_params:
@@ -122,11 +156,13 @@ for hp in set_params:
 
     # Place data loading and preprocessing on the cpu
     #with tf.device('/cpu:0'):
-    dataset_dir = [dataset_dir_rgb, dataset_dir_depth]
+    dataset_train_dir = [dataset_train_dir_rgb, dataset_train_dir_depth]
+    dataset_val_dir = [dataset_val_dir_rgb, dataset_val_dir_depth]
 
     tr_data = ImageDataHandler(
         train_file,
-        data_dir=dataset_dir,
+        data_dir=dataset_train_dir,
+        params_dir=params_root_dir,
         img_size=img_size,
         batch_size=bs,
         num_classes=num_classes,
@@ -135,19 +171,20 @@ for hp in set_params:
 
     val_data = ImageDataHandler(
         val_file,
-        data_dir=dataset_dir,
+        data_dir=dataset_val_dir,
+        params_dir=params_root_dir,
         img_size=img_size,
         batch_size=bs,
         num_classes=num_classes,
         shuffle=False,
         random_crops=False)
 
-        # create a re-initializable iterator given the dataset structure
-        # no need for two different to deal with training and val data,
-       # just two initializers
+    # Create a re-initializable iterator given the dataset structure
+    # no need for two different to deal with training and val data,
+    # just two initializers
     iterator = Iterator.from_structure(tr_data.data.output_types,
                                        tr_data.data.output_shapes)
-    next_batch = iterator.get_next() # op
+    next_batch = iterator.get_next()
 
     # Ops for initializing the two different iterators
     training_init_op = iterator.make_initializer(tr_data.data)
@@ -206,7 +243,7 @@ for hp in set_params:
 
 
         # Extract features
-        #res1_rgb = model_rgb.relu1
+        res1_rgb = model_rgb.relu1
         inter_res2_rgb = model_rgb.inter_res2
         res2_rgb = model_rgb.res2
         inter_res3_rgb = model_rgb.inter_res3
@@ -216,7 +253,9 @@ for hp in set_params:
         inter_res5_rgb = model_rgb.inter_res5
         res5_rgb = model_rgb.res5
 
-        #res1_depth = model_depth.relu1
+        pool2_flat_rgb = model_rgb.pool2_flat
+
+        res1_depth = model_depth.relu1
         inter_res2_depth = model_depth.inter_res2
         res2_depth = model_depth.res2
         inter_res3_depth = model_depth.inter_res3
@@ -226,16 +265,14 @@ for hp in set_params:
         inter_res5_depth = model_depth.inter_res5
         res5_depth = model_depth.res5
 
-
-        sm_rgb = model_rgb.softmax
-        sm_depth = model_depth.softmax
+        pool2_flat_depth = model_depth.pool2_flat
 
         # Conv1x1
         with tf.variable_scope('conv1x1'):
             
             #depth_transf = 64
             
-            #relu_conv1x1_res1_rgb = transformation_block(res1_rgb, 1024, conv_kernel_constraint, training_phase, 'redux_rgb_res1')
+            relu_conv1x1_res1_rgb = transformation_block(res1_rgb, dt, conv_kernel_constraint, training_phase, 'redux_rgb_res1')
             relu_conv1x1_inter_res2_rgb = transf_block(inter_res2_rgb, dt, conv_kernel_constraint, training_phase, 'redux_rgb_inter_res2')
             relu_conv1x1_res2_rgb = transf_block(res2_rgb, dt, conv_kernel_constraint, training_phase, 'redux_rgb_res2') 
             relu_conv1x1_inter_res3_rgb = transf_block(inter_res3_rgb, dt, conv_kernel_constraint, training_phase, 'redux_rgb_inter_res3')
@@ -245,7 +282,7 @@ for hp in set_params:
             relu_conv1x1_inter_res5_rgb = transf_block(inter_res5_rgb, dt, conv_kernel_constraint, training_phase, 'redux_rgb_inter_res5')
             relu_conv1x1_res5_rgb = transf_block(res5_rgb, dt, conv_kernel_constraint, training_phase, 'redux_rgb_res5')
             
-            #relu_conv1x1_res1_depth = transformation_block(res1_depth, 1024, conv_kernel_constraint, training_phase, 'redux_depth_res1')
+            relu_conv1x1_res1_depth = transformation_block(res1_depth, dt, conv_kernel_constraint, training_phase, 'redux_depth_res1')
             relu_conv1x1_inter_res2_depth = transf_block(inter_res2_depth, dt, conv_kernel_constraint, training_phase, 'redux_depth_inter_res2')
             relu_conv1x1_res2_depth = transf_block(res2_depth, dt, conv_kernel_constraint, training_phase, 'redux_depth_res2')
             relu_conv1x1_inter_res3_depth = transf_block(inter_res3_depth, dt, conv_kernel_constraint, training_phase, 'redux_depth_inter_res3')
@@ -255,7 +292,7 @@ for hp in set_params:
             relu_conv1x1_inter_res5_depth = transf_block(inter_res5_depth, dt, conv_kernel_constraint, training_phase, 'redux_depth_inter_res5')
             relu_conv1x1_res5_depth = transf_block(res5_depth, dt, conv_kernel_constraint, training_phase, 'redux_depth_res5')
  
-        #relu_conv1x1_res1_rgb = tf.reshape(relu_conv1x1_res1_rgb, [-1, flat_shape(relu_conv1x1_res1_rgb)])
+        relu_conv1x1_res1_rgb = tf.reshape(relu_conv1x1_res1_rgb, [-1, flat_shape(relu_conv1x1_res1_rgb)])
         relu_conv1x1_inter_res2_rgb = tf.reshape(relu_conv1x1_inter_res2_rgb, [-1, flat_shape(relu_conv1x1_inter_res2_rgb)])
         relu_conv1x1_res2_rgb = tf.reshape(relu_conv1x1_res2_rgb, [-1, flat_shape(relu_conv1x1_res2_rgb)])
         relu_conv1x1_inter_res3_rgb = tf.reshape(relu_conv1x1_inter_res3_rgb, [-1, flat_shape(relu_conv1x1_inter_res3_rgb)])
@@ -265,7 +302,7 @@ for hp in set_params:
         relu_conv1x1_inter_res5_rgb = tf.reshape(relu_conv1x1_inter_res5_rgb, [-1, flat_shape(relu_conv1x1_inter_res5_rgb)])
         relu_conv1x1_res5_rgb = tf.reshape(relu_conv1x1_res5_rgb, [-1, flat_shape(relu_conv1x1_res5_rgb)])
 
-        #relu_conv1x1_res1_depth = tf.reshape(relu_conv1x1_res1_depth, [-1, flat_shape(relu_conv1x1_res1_depth)])
+        relu_conv1x1_res1_depth = tf.reshape(relu_conv1x1_res1_depth, [-1, flat_shape(relu_conv1x1_res1_depth)])
         relu_conv1x1_inter_res2_depth = tf.reshape(relu_conv1x1_inter_res2_depth, [-1, flat_shape(relu_conv1x1_inter_res2_depth)])
         relu_conv1x1_res2_depth = tf.reshape(relu_conv1x1_res2_depth, [-1, flat_shape(relu_conv1x1_res2_depth)])
         relu_conv1x1_inter_res3_depth = tf.reshape(relu_conv1x1_inter_res3_depth, [-1, flat_shape(relu_conv1x1_inter_res3_depth)])
@@ -276,7 +313,7 @@ for hp in set_params:
         relu_conv1x1_res5_depth = tf.reshape(relu_conv1x1_res5_depth, [-1, flat_shape(relu_conv1x1_res5_depth)])
 
         # RGB and depth pipelines' merge point
-        #relu_conv1x1_res1 = tf.concat([relu_conv1x1_res1_rgb, relu_conv1x1_res1_depth], axis=1)
+        relu_conv1x1_res1 = tf.concat([relu_conv1x1_res1_rgb, relu_conv1x1_res1_depth], axis=1)
         relu_conv1x1_inter_res2 = tf.concat([relu_conv1x1_inter_res2_rgb, relu_conv1x1_inter_res2_depth], axis=1)
         relu_conv1x1_res2 = tf.concat([relu_conv1x1_res2_rgb, relu_conv1x1_res2_depth], axis=1)
         relu_conv1x1_inter_res3 = tf.concat([relu_conv1x1_inter_res3_rgb, relu_conv1x1_inter_res3_depth], axis=1)
@@ -286,14 +323,14 @@ for hp in set_params:
         relu_conv1x1_inter_res5 = tf.concat([relu_conv1x1_inter_res5_rgb, relu_conv1x1_inter_res5_depth], axis=1)
         relu_conv1x1_res5 = tf.concat([relu_conv1x1_res5_rgb, relu_conv1x1_res5_depth], axis=1)
 
-        rnn_input = tf.stack([relu_conv1x1_inter_res2, relu_conv1x1_res2, relu_conv1x1_inter_res3, relu_conv1x1_res3, relu_conv1x1_inter_res4, relu_conv1x1_res4, relu_conv1x1_inter_res5, relu_conv1x1_res5], axis=1)
-        #rnn_input = tf.stack([relu_conv1x1_inter_res4, relu_conv1x1_res4, relu_conv1x1_inter_res5, relu_conv1x1_res5], axis=1)
- 
+        rnn_input = tf.stack([relu_conv1x1_res1, relu_conv1x1_inter_res2, relu_conv1x1_res2, relu_conv1x1_inter_res3, relu_conv1x1_res3, relu_conv1x1_inter_res4, relu_conv1x1_res4, relu_conv1x1_inter_res5, relu_conv1x1_res5], axis=1)
+
+
         # Recurrent net
         with tf.variable_scope("rnn"):
             rnn_h = GRU(nn, activation='tanh', dropout=do, recurrent_dropout=do, name="rnn_h", 
                         kernel_constraint=rnn_kernel_constraint, recurrent_constraint=rnn_recurrent_constraint)(rnn_input)
-            preds = Dense(num_classes, activation='softmax')(rnn_h)
+            preds = Dense(num_classes, activation='softmax', kernel_constraint=dense_kernel_constraint)(rnn_h)
 
         # Include keras-related metadata in the session
         K.set_session(sess)
@@ -308,13 +345,8 @@ for hp in set_params:
         global_step = tf.Variable(0, trainable=False)
         increment_global_step = tf.assign(global_step, global_step+1)
         lr_boundaries = [int(num_epochs*tr_batches_per_epoch*0.5)]#, int(num_epochs*tr_batches_per_epoch*0.6)]
-        lr_values = [lr, lr/10]#, lr/100]
+        lr_values = [lr, lr/10]
         decayed_lr = tf.train.piecewise_constant(global_step, lr_boundaries, lr_values)
-        
-        #k = 0.2
-        #decayed_lr = tf.train.inverse_time_decay(lr, global_step, 1000, k)
-
-        lr_mult_conv1x1 = 1 
 
         # L2-regularization
         alpha_rnn = aa
@@ -326,50 +358,43 @@ for hp in set_params:
         
 
         # F2-norm
-        rgb_nodes = [relu_conv1x1_inter_res2_rgb, relu_conv1x1_res2_rgb, relu_conv1x1_inter_res3_rgb, relu_conv1x1_res3_rgb, relu_conv1x1_inter_res4_rgb, relu_conv1x1_res4_rgb, relu_conv1x1_inter_res5_rgb, relu_conv1x1_res5_rgb]
-        #rgb_nodes = [relu_conv1x1_inter_res4_rgb, relu_conv1x1_res4_rgb, relu_conv1x1_inter_res5_rgb, relu_conv1x1_res5_rgb]
-        depth_nodes = [relu_conv1x1_inter_res2_depth, relu_conv1x1_res2_depth, relu_conv1x1_inter_res3_depth, relu_conv1x1_res3_depth, relu_conv1x1_inter_res4_depth, relu_conv1x1_res4_depth, relu_conv1x1_inter_res5_depth, relu_conv1x1_res5_depth]
-        #depth_nodes = [relu_conv1x1_inter_res4_depth, relu_conv1x1_res4_depth, relu_conv1x1_inter_res5_depth, relu_conv1x1_res5_depth]
+        #rgb_nodes = [relu_conv1x1_inter_res2_rgb, relu_conv1x1_res2_rgb, relu_conv1x1_inter_res3_rgb, relu_conv1x1_res3_rgb, relu_conv1x1_inter_res4_rgb, relu_conv1x1_res4_rgb, relu_conv1x1_inter_res5_rgb, relu_conv1x1_res5_rgb]
+        rgb_nodes = [relu_conv1x1_res1_rgb, relu_conv1x1_inter_res2_rgb, relu_conv1x1_res2_rgb, relu_conv1x1_inter_res3_rgb, relu_conv1x1_res3_rgb, relu_conv1x1_inter_res4_rgb, relu_conv1x1_res4_rgb, relu_conv1x1_inter_res5_rgb, relu_conv1x1_res5_rgb]
+        #depth_nodes = [relu_conv1x1_inter_res2_depth, relu_conv1x1_res2_depth, relu_conv1x1_inter_res3_depth, relu_conv1x1_res3_depth, relu_conv1x1_inter_res4_depth, relu_conv1x1_res4_depth, relu_conv1x1_inter_res5_depth, relu_conv1x1_res5_depth]
+        depth_nodes = [relu_conv1x1_res1_depth, relu_conv1x1_inter_res2_depth, relu_conv1x1_res2_depth, relu_conv1x1_inter_res3_depth, relu_conv1x1_res3_depth, relu_conv1x1_inter_res4_depth, relu_conv1x1_res4_depth, relu_conv1x1_inter_res5_depth, relu_conv1x1_res5_depth]
         reg = tf.Variable(0.0, trainable=False)
+        
         #sigm_reg = 0.0001*tf.sigmoid(((12*tf.cast(global_step,tf.float32))/(num_epochs*tr_batches_per_epoch))-6, name='reg_sigmoid')
-        sigm_reg = 0.00001
-        recompute_reg = tf.assign(reg, sigm_reg)
-        reg_lambda = [10*recompute_reg, 10*recompute_reg, recompute_reg, recompute_reg, 0.01*recompute_reg, 0.01*recompute_reg, 0.0*recompute_reg, 0.0*recompute_reg] 
+        sigm_reg = 1.0
+        reg_values = [sigm_reg, 0.0]
+        decayed_reg = tf.train.piecewise_constant(global_step, lr_boundaries, reg_values)
+        #recompute_reg = tf.assign(reg, sigm_reg)
+
+        reg_lambda = [0.0*decayed_reg, 0.0*decayed_reg, 1e-6*decayed_reg, 1e-5*decayed_reg, 1e-5*decayed_reg, 1e-4*decayed_reg, 1e-4*decayed_reg, 0.0*decayed_reg, 0.0*decayed_reg]
+
+        lr_mult_conv1x1 = decayed_reg
        
-        # Loss 
-        loss_perp, loss_perp_list = generate_perp_loss(rgb_nodes, depth_nodes, reg_lambda) 
+        # Loss
         loss_l2 = l2_rnn + l2_conv1x1
         loss_cls = tf.reduce_mean(categorical_crossentropy(y, preds))
     
-        loss = loss_cls + loss_perp #+ loss_l2
+        loss = loss_cls #+ loss_l2
         train_step_rnn = tf.keras.optimizers.RMSprop(lr=decayed_lr).get_updates(loss=loss, params=trainable_variables_rnn)
         train_step_conv1x1 = tf.keras.optimizers.RMSprop(lr=decayed_lr*lr_mult_conv1x1).get_updates(loss=loss, params=trainable_variables_conv1x1)
-        #train_step_rgb = tf.train.RMSPropOptimizer(decayed_lr*0.01, momentum=0.9, decay = 0.0).minimize(loss, var_list=trainable_variables_rgb)
-        #train_step_depth = tf.train.RMSPropOptimizer(decayed_lr*0.01, momentum=0.9, decay = 0.0).minimize(loss, var_list=trainable_variables_depth) 
-        #train_step_rnn = tf.train.RMSPropOptimizer(decayed_lr).minimize(loss, var_list=trainable_variables_rnn)
-        #train_step_conv1x1 = tf.train.RMSPropOptimizer(decayed_lr*lr_mult_conv1x1, momentum=0.9, decay = 0.0).minimize(loss, var_list=trainable_variables_conv1x1)
-        #train_step_conv1x1 = tf.train.RMSPropOptimizer(decayed_lr*lr_mult_conv1x1).minimize(loss, var_list=trainable_variables_conv1x1)
+
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)                                                                           
         with tf.control_dependencies(update_ops):
-            train_step = tf.group(train_step_rnn, train_step_conv1x1, increment_global_step, recompute_reg)
+            train_step = tf.group(train_step_rnn, train_step_conv1x1, increment_global_step)
             #train_step = tf.group(train_step_rnn, train_step_conv1x1, train_step_rgb, train_step_depth, increment_global_step, recompute_reg)
         accuracy = tf.reduce_mean(categorical_accuracy(y, preds))   
 
-        accuracy_rgb = tf.reduce_mean(categorical_accuracy(y, sm_rgb))
-        accuracy_depth = tf.reduce_mean(categorical_accuracy(y, sm_depth))
-      
-
         # Create summaries for Tensorboard
         tf.summary.scalar("loss_cls", loss_cls)
-        tf.summary.scalar("loss_perp", loss_perp)
-        tf.summary.scalar("loss_perp_res3", loss_perp_list[0])
-        tf.summary.scalar("loss_perp_res4", loss_perp_list[1])
-        tf.summary.scalar("loss_perp_res5", loss_perp_list[2])
         tf.summary.scalar("loss_l2", loss_l2)
         tf.summary.scalar("loss", loss)
         tf.summary.scalar("accuracy", accuracy)
         tf.summary.scalar("learning rate", decayed_lr)
-        tf.summary.scalar("lambda", reg)
+        tf.summary.scalar("lambda", decayed_reg)
         summary_op = tf.summary.merge_all()
 
         name = str(lr) + '_' + str(bs) + '_' +  str(nn)
@@ -378,17 +403,6 @@ for hp in set_params:
 
         # Initialize all variables
         sess.run(tf.global_variables_initializer())
-
-        #print(sess.run(trainable_variables_rnn[0]))
-
-
-#        # Max norm
-#        for idx_w, w in enumerate(trainable_variables_rnn):
-#            trainable_variables_rnn[idx_w] = tf.assign(w, tf.clip_by_value(w, -0.0, 0.0))
-#        for idx_w, w in enumerate(trainable_variables_conv1x1):
-#            trainable_variables_conv1x1[idx_w] = tf.assign(w, tf.clip_by_value(w, -0.0, 0.0))
-
-        #print(sess.run(trainable_variables_rnn[0]))
 
         # Load the pretrained weights into the non-trainable layer
         model_rgb.load_params(sess, params_dir_rgb, trainable=False)
@@ -402,7 +416,7 @@ for hp in set_params:
         tb_train_count=0        
         tb_val_count = 0
 
-         
+ 
         # Loop over number of epochs
         num_samples = 0
         # Training set
@@ -416,7 +430,6 @@ for hp in set_params:
         for i in range(tr_batches_per_epoch):
             bar.update(i+1)
             tb_train_count+=1
-            #print("batch {} / {}".format(i, train_batches_per_epoch))
             rgb_batch, depth_batch, label_batch = sess.run(next_batch)
 
             num_samples += np.shape(rgb_batch)[0]
@@ -434,24 +447,15 @@ for hp in set_params:
         val_loss = 0
         num_samples = 0  
 
-        val_acc_rgb = 0
-        val_acc_depth = 0
-
         sess.run(validation_init_op)
         for i in range(val_batches_per_epoch):
 
             tb_val_count+=1
-            #print("batch {} / {}".format(i, val_batches_per_epoch))
             rgb_batch, depth_batch, label_batch = sess.run(next_batch)
             num_samples += np.shape(rgb_batch)[0]
 
             feed_dict = {x_rgb: rgb_batch, x_depth: depth_batch, y: label_batch, keep_prob: 1.0, training_phase: False, K.learning_phase(): 0}
-            #batch_loss, batch_acc, summary = sess.run([loss, accuracy, summary_op], feed_dict=feed_dict)
-            batch_loss, batch_acc, batch_acc_rgb, batch_acc_depth, summary = sess.run([loss, accuracy, accuracy_rgb, accuracy_depth, summary_op], feed_dict=feed_dict)
-
-
-            val_acc_rgb +=batch_acc_rgb
-            val_acc_depth +=batch_acc_depth
+            batch_loss, batch_acc, summary = sess.run([loss, accuracy, summary_op], feed_dict=feed_dict)
 
             val_loss+=batch_loss
             val_acc+=batch_acc
@@ -460,11 +464,8 @@ for hp in set_params:
         val_loss /= val_batches_per_epoch #num_samples
         val_acc /= val_batches_per_epoch #num_samples
 
-        val_acc_rgb /= val_batches_per_epoch
-        val_acc_depth /= val_batches_per_epoch
+        print("\n{} Validation loss : {}, Validation Accuracy = {:.4f}".format(datetime.now(), val_loss, val_acc))
 
-        print("\n{} Validation loss : {}, Validation Accuracy = {:.4f}, RGB Accuracy = {:.4f}, Depth Accuracy = {:.4f}".format(datetime.now(), val_loss, val_acc, val_acc_rgb, val_acc_depth))
-        
 
 
         # Loop over number of epochs
@@ -482,21 +483,23 @@ for hp in set_params:
             for i in range(tr_batches_per_epoch):
                 bar.update(i+1)
                 tb_train_count+=1
-                #print("batch {} / {}".format(i, train_batches_per_epoch))
                 rgb_batch, depth_batch, label_batch = sess.run(next_batch)
 
-                num_samples += np.shape(rgb_batch)[0]
+                num_samples += np.shape(rgb_batch)[0] 
+
+                # apply data augmentation
+                data_aug(rgb_batch , depth_batch)
 
                 feed_dict = {x_rgb: rgb_batch, x_depth: depth_batch, y: label_batch, keep_prob: (1-do), training_phase: True, K.learning_phase(): 1}
                 batch_loss, _, summary = sess.run([loss, train_step, summary_op], feed_dict=feed_dict)
                 train_loss += batch_loss
-     
+                
                 train_writer.add_summary(summary, tb_train_count)
 
             bar.finish()
 
             train_loss /= tr_batches_per_epoch #num_samples
-            print("training loss = {}, {}\n".format(train_loss, tr_batches_per_epoch))
+            print("training loss = {}\n".format(train_loss))
 
     
             if (epoch+1)%1 == 0:
@@ -504,17 +507,36 @@ for hp in set_params:
                 num_samples = 0
                 val_loss = 0
                 val_acc = 0
+                tsne_feat_rgb, tsne_feat_depth, tsne_feat_rgbd = None, None, None 
+                pred_feat, gt_feat = None, None
+
 
                 for i in range(val_batches_per_epoch):
 
                     tb_val_count+=1
-                    #print("batch {} / {}".format(i, val_batches_per_epoch))
                     rgb_batch, depth_batch, label_batch = sess.run(next_batch)
 
                     num_samples += np.shape(rgb_batch)[0]
 
                     feed_dict = {x_rgb: rgb_batch, x_depth: depth_batch, y: label_batch, keep_prob: 1.0, training_phase: False, K.learning_phase(): 0}
-                    batch_loss, batch_acc, summary = sess.run([loss, accuracy, summary_op], feed_dict=feed_dict)
+                    batch_loss, batch_acc, summary, tsne_batch_rgb, tsne_batch_depth, tsne_batch_rgbd, batch_preds = sess.run([loss, 
+                        accuracy, summary_op, pool2_flat_rgb, pool2_flat_depth, rnn_h, preds], 
+                        feed_dict=feed_dict)
+
+                    if tsne_feat_rgb is None:
+                        tsne_feat_rgb = tsne_batch_rgb
+                        tsne_feat_depth = tsne_batch_depth
+                        tsne_feat_rgbd = tsne_batch_rgbd
+
+                        pred_feat = batch_preds
+                        gt_feat = label_batch
+                    else:
+                        tsne_feat_rgb = np.append(tsne_feat_rgb, tsne_batch_rgb, axis=0)
+                        tsne_feat_depth = np.append(tsne_feat_depth, tsne_batch_depth, axis=0)
+                        tsne_feat_rgbd = np.append(tsne_feat_rgbd, tsne_batch_rgbd, axis=0)
+
+                        pred_feat = np.append(pred_feat, batch_preds, axis=0)
+                        gt_feat = np.append(gt_feat, label_batch, axis=0)
 
                     val_loss+=batch_loss
                     val_acc+=batch_acc
@@ -524,6 +546,21 @@ for hp in set_params:
                 val_acc /= val_batches_per_epoch #num_samples
 
                 print("\n{} Validation loss : {}, Validation Accuracy = {:.4f}".format(datetime.now(), val_loss, val_acc))
+
+                if (epoch + 1) == num_epochs:
+                    with open("../features/tsne_feat_rgb.npy", "w+") as f:
+                        np.save(f, tsne_feat_rgb)
+                    with open("../features/tsne_feat_depth.npy", "w+") as f:
+                        np.save(f, tsne_feat_depth)
+                    with open("../features/tsne_feat_rgbd.npy", "w+") as f:
+                        np.save(f, tsne_feat_rgbd)
+                    with open("../features/feat_preds.npy", "w+") as f:
+                        final_preds = np.zeros([pred_feat.shape[0],2])
+                        final_preds[:,0] = np.argmax(pred_feat, axis=1)
+                        final_preds[:,1] = np.argmax(gt_feat, axis=1)
+                        np.save(f, final_preds)
+
+                del tsne_feat_rgb, tsne_feat_depth, tsne_feat_rgbd
 
                 log_epoch.append(epoch)
                 log_train_loss.append(train_loss)
@@ -535,6 +572,7 @@ for hp in set_params:
                 print("Training stopped due to poor results or divergence: validation loss = {}".format(val_acc))
                 break
                 
+
 
         history_callback = {log[0]:log_epoch, log[1]:log_train_loss, log[2]:log_val_loss, log[3]:log_val_acc}
         log_file(history_callback, hp)
