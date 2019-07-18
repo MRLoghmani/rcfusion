@@ -13,7 +13,7 @@ Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D O
 [Skip to point (4) to run w/o docker]
 2. To execute the code within a docker container, run ```docker build -t <container_name> .```
 3. Start the container with ```docker run -it --runtime=nvidia -v <dataset_dir>:<dataset_dir> -v <params_dir>:<params_dir> <container_name> bash```
-4. Run ```python tran_and_eval.py <dataset_dir> <params_dir>```
+4. Run ```python train_and_eval.py <dataset_dir> <params_dir>```
 
 ### Disclaimers:
 * The paper should be cosidered the main reference for this work. All the details of the algorithm and the training are reported there.
@@ -23,7 +23,7 @@ Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D O
 ### Download:
 * Pre-processed semantic crops of OCID dataset: https://data.acin.tuwien.ac.at/index.php/s/e46X2cCIjLXoRn7
 * Original semantic crops of OCID dataset (we recommend using the link above instead to have the exact same pre-training we used in our experiments): https://www.acin.tuwien.ac.at/vision-for-robotics/software-tools/object-clutter-indoor-dataset/
-* ResNet-18 pre-trained weights for initialization: https://data.acin.tuwien.ac.at/index.php/s/l1Uo4RoOwl8eYCE
+* ResNet-18 pre-trained weights for initialization: https://data.acin.tuwien.ac.at/index.php/s/RueHQUbs2JtoHeJ
 
 ### Contributors:
 * Mohammad Reza Loghmani - email: loghmani@acin.tuwien.ac.at
