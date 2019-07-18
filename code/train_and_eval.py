@@ -36,19 +36,19 @@ tf.set_random_seed(7)
 # Data-related params
 if len(sys.argv) != 3:
     print("The script requires 2 arguments: (1) the dataset root directory and (2) the parameters root directory.")
-dataset_root_dir = sys.argv[1] #'/mnt/datasets/ocid_dataset/'
-params_root_dir = sys.argv[2] #'/mnt/params/models/'
+dataset_root_dir = sys.argv[1] #'/mnt/datasets/ocid_dataset'
+params_root_dir = sys.argv[2] #'/mnt/params/models'
 
-dataset_train_dir_rgb = dataset_root_dir + 'ARID20_crops/squared_rgb/'
-dataset_val_dir_rgb = dataset_root_dir + 'ARID10_crops/squared_rgb/'
-params_dir_rgb = params_root_dir + 'resnet18_ocid_rgb++_params.npy'
+dataset_train_dir_rgb = dataset_root_dir + '/ARID20_crops/squared_rgb/'
+dataset_val_dir_rgb = dataset_root_dir + '/ARID10_crops/squared_rgb/'
+params_dir_rgb = params_root_dir + '/resnet18_ocid_rgb++_params.npy'
 
-dataset_train_dir_depth = dataset_root_dir + 'ARID20_crops/surfnorm++/'
-dataset_val_dir_depth = dataset_root_dir + 'ARID10_crops/surfnorm++/'
-params_dir_depth = params_root_dir + 'resnet18_ocid_surfnorm++_params.npy'
+dataset_train_dir_depth = dataset_root_dir + '/ARID20_crops/surfnorm++/'
+dataset_val_dir_depth = dataset_root_dir + '/ARID10_crops/surfnorm++/'
+params_dir_depth = params_root_dir + '/resnet18_ocid_surfnorm++_params.npy'
 
-train_file = dataset_root_dir + 'split_files_and_labels/arid20_clean_sync_instances.txt'
-val_file = dataset_root_dir + 'split_files_and_labels/arid10_clean_sync_instances.txt'
+train_file = dataset_root_dir + '/split_files_and_labels/arid20_clean_sync_instances.txt'
+val_file = dataset_root_dir + '/split_files_and_labels/arid10_clean_sync_instances.txt'
 
 # Log params
 log_dir = '../log/'
