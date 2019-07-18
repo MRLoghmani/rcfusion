@@ -13,7 +13,7 @@ Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D O
 [Skip to point (4) to run w/o docker]
 2. To execute the code within a docker container, run ```docker build -t <container_name> .```
 3. Start the container with ```docker run -it --runtime=nvidia -v <dataset_dir>:<dataset_dir> -v <params_dir>:<params_dir> <container_name> bash```
-4. Run ```python train_and_eval.py <dataset_dir> <params_dir>```
+4. Run ```python code/train_and_eval.py <dataset_dir> <params_dir>```
 
 ### Disclaimers:
 * The paper should be cosidered the main reference for this work. All the details of the algorithm and the training are reported there.
