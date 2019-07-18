@@ -16,8 +16,8 @@ class ImageDataHandler(object):
 
         self.num_classes = num_classes
         self.img_size = img_size
-        self.img_mean_rgb = np.load(params_dir + 'ocid_mean_rgb++.npy')
-        self.img_mean_depth = np.load(params_dir + 'ocid_mean_surfnorm++.npy')
+        self.img_mean_rgb = np.load(params_dir + '/ocid_mean_rgb++.npy')
+        self.img_mean_depth = np.load(params_dir + '/ocid_mean_surfnorm++.npy')
         self.num_channels = num_channels
         self.batch_size = batch_size
         self.buffer_size = buffer_size
