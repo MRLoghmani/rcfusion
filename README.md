@@ -6,7 +6,7 @@ Original implementation of the paper "Recurrent Convolutional Fusion for RGB-D O
 * CUDA 8.0
 * Python 2.7
 * See python requirements in requirements.txt
-* Docker + nvidia-docker [optional]
+* Docker + nvidia-docker [optional]: https://github.com/NVIDIA/nvidia-docker
 
 ### Instructions:
 1. Download dataset and parameteres (see link below) and extract them in directory <dataset_dir> and <params_dir>
