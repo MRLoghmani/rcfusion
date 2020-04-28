@@ -73,7 +73,7 @@ def count_params(trainable_variables):
         global_w += local_w
     return global_w
 
-def log_file(history_callback, params):
+def log_file(history_callback, log_dir, params):
 
     log_name = log_dir + 'log_'
     for p in params:
