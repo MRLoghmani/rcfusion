@@ -10,7 +10,7 @@ from image_data_handler_joint_multimodal import ImageDataHandler
 from resnet18 import ResNet
 from layer_blocks import *
 from tensorflow.data import Iterator
-from utils import flat_shape, count_params, log_file
+from utils import flat_shape, count_params
 import cPickle as pickle
 
 from imgaug import imgaug as ia
@@ -51,10 +51,6 @@ train_file = dataset_root_dir + '/split_files_and_labels/arid20_clean_sync_insta
 val_file = dataset_root_dir + '/split_files_and_labels/arid10_clean_sync_instances.txt'
 
 # Log params
-log_dir = '../log/'
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
-log = ["epoch", "train_loss", "val_loss", "val_acc"]
 tensorboard_log = '/tmp/tensorflow/'
 
 # Solver params
@@ -198,12 +194,6 @@ for hp in set_params:
     batches_per_epoch = {'training': tr_batches_per_epoch, 'validation': val_batches_per_epoch}
 
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1.0)
-  
-    # Log vars
-    log_epoch = []
-    log_train_loss = []
-    log_val_loss = []
-    log_val_acc = []
 
 
     # Start Tensorflow session
@@ -507,7 +497,6 @@ for hp in set_params:
                 num_samples = 0
                 val_loss = 0
                 val_acc = 0
-                tsne_feat_rgb, tsne_feat_depth, tsne_feat_rgbd = None, None, None 
                 pred_feat, gt_feat = None, None
 
 
@@ -519,21 +508,7 @@ for hp in set_params:
                     num_samples += np.shape(rgb_batch)[0]
 
                     feed_dict = {x_rgb: rgb_batch, x_depth: depth_batch, y: label_batch, keep_prob: 1.0, training_phase: False, K.learning_phase(): 0}
-                    batch_loss, batch_acc, summary, tsne_batch_rgb, tsne_batch_depth, tsne_batch_rgbd, batch_preds = sess.run([loss, 
-                        accuracy, summary_op, pool2_flat_rgb, pool2_flat_depth, rnn_h, preds], 
-                        feed_dict=feed_dict)
-
-                    if tsne_feat_rgb is None:
-                        tsne_feat_rgb = tsne_batch_rgb
-                        tsne_feat_depth = tsne_batch_depth
-                        tsne_feat_rgbd = tsne_batch_rgbd
-
-                        pred_feat = batch_preds
-                        gt_feat = label_batch
-                    else:
-                        tsne_feat_rgb = np.append(tsne_feat_rgb, tsne_batch_rgb, axis=0)
-                        tsne_feat_depth = np.append(tsne_feat_depth, tsne_batch_depth, axis=0)
-                        tsne_feat_rgbd = np.append(tsne_feat_rgbd, tsne_batch_rgbd, axis=0)
+                    batch_loss, batch_acc, summary, batch_preds = sess.run([loss, accuracy, summary_op, preds], feed_dict=feed_dict)
 
                         pred_feat = np.append(pred_feat, batch_preds, axis=0)
                         gt_feat = np.append(gt_feat, label_batch, axis=0)
@@ -547,35 +522,10 @@ for hp in set_params:
 
                 print("\n{} Validation loss : {}, Validation Accuracy = {:.4f}".format(datetime.now(), val_loss, val_acc))
 
-                if (epoch + 1) == num_epochs:
-                    with open("../features/tsne_feat_rgb.npy", "w+") as f:
-                        np.save(f, tsne_feat_rgb)
-                    with open("../features/tsne_feat_depth.npy", "w+") as f:
-                        np.save(f, tsne_feat_depth)
-                    with open("../features/tsne_feat_rgbd.npy", "w+") as f:
-                        np.save(f, tsne_feat_rgbd)
-                    with open("../features/feat_preds.npy", "w+") as f:
-                        final_preds = np.zeros([pred_feat.shape[0],2])
-                        final_preds[:,0] = np.argmax(pred_feat, axis=1)
-                        final_preds[:,1] = np.argmax(gt_feat, axis=1)
-                        np.save(f, final_preds)
-
-                del tsne_feat_rgb, tsne_feat_depth, tsne_feat_rgbd
-
-                log_epoch.append(epoch)
-                log_train_loss.append(train_loss)
-                log_val_loss.append(val_loss)
-                log_val_acc.append(val_acc)
-
             # Early stopping for ill-posed params combination
             if ((epoch == 0) and (val_acc < 0.2)) or ((epoch == 9) and (val_acc < 0.5)) or np.isnan(train_loss):
                 print("Training stopped due to poor results or divergence: validation loss = {}".format(val_acc))
                 break
-                
-
-
-        history_callback = {log[0]:log_epoch, log[1]:log_train_loss, log[2]:log_val_loss, log[3]:log_val_acc}
-        log_file(history_callback, hp)
 
     tf.reset_default_graph()
     shutil.rmtree(tensorboard_log)
