@@ -497,7 +497,6 @@ for hp in set_params:
                 num_samples = 0
                 val_loss = 0
                 val_acc = 0
-                pred_feat, gt_feat = None, None
 
 
                 for i in range(val_batches_per_epoch):
@@ -509,9 +508,6 @@ for hp in set_params:
 
                     feed_dict = {x_rgb: rgb_batch, x_depth: depth_batch, y: label_batch, keep_prob: 1.0, training_phase: False, K.learning_phase(): 0}
                     batch_loss, batch_acc, summary, batch_preds = sess.run([loss, accuracy, summary_op, preds], feed_dict=feed_dict)
-
-                        pred_feat = np.append(pred_feat, batch_preds, axis=0)
-                        gt_feat = np.append(gt_feat, label_batch, axis=0)
 
                     val_loss+=batch_loss
                     val_acc+=batch_acc
